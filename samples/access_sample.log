@@ -1,0 +1,4 @@
+192.0.2.10 - - [15/Jan/2026:09:20:01 +0000] "GET /index.html HTTP/1.1" 200 512 "-" "LogHunter-Demo/1.0"
+198.51.100.20 - - [15/Jan/2026:09:21:02 +0000] "POST /session HTTP/1.1" 200 128 "https://example.invalid/" "LogHunter-Demo/1.0"
+203.0.113.25 - - [15/Jan/2026:09:22:03 +0000] "GET /missing HTTP/1.1" 404 64 "-" "LogHunter-Demo/1.0"
+intentionally malformed synthetic web record

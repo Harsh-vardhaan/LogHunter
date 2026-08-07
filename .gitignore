@@ -1,0 +1,25 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+
+# Virtual environments and local environment variables
+.venv/
+venv/
+.env
+
+# Test, type-checking, and coverage artifacts
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+
+# Logs are ignored by default, except the repository's synthetic fixtures
+*.log
+!samples/
+!samples/auth_sample.log
+!samples/access_sample.log

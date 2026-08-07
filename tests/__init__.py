@@ -1,0 +1,1 @@
+"""LogHunter unit tests."""
