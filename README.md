@@ -1,42 +1,58 @@
 # LogHunter
 
-A command-line security log analysis tool built in Python for parsing authentication and web server logs and preparing them for rule-based threat detection.
+A Python command-line defensive security tool that parses local authentication and web logs, normalizes supported records, and evaluates transparent rule-based heuristics.
 
 ## Overview
 
-LogHunter normalizes supported local log records and reports parsing statistics. Phase 1 performs log parsing only; threat detection is not enabled.
+LogHunter helps analysts identify patterns worth reviewing without making unsupported claims. It operates offline on an explicitly supplied local file and reports structured findings rather than dumping raw log contents.
 
-## Why LogHunter Exists
+## Phase 2 Status
 
-This portfolio project demonstrates safe ingestion, extensible parser design, testing, and defensive-security boundaries in an interview-ready Python codebase.
+Version 0.2.0 adds a deterministic detection engine and six documented authentication and web rules. Findings are heuristic indicators and do not prove compromise, malicious intent, or successful exploitation.
 
-## Current Phase
+## Detection Engine
 
-Version 0.1.0 establishes the CLI, read-only streaming loader, normalized event model, SSH authentication parser, and Apache/Nginx access parser.
+Parsers produce immutable `LogEvent` records. The detection engine selects rules for the chosen log type, passes them only normalized events, collects immutable `Finding` objects, and sorts them by severity, rule ID, source IP, and username. Rules remain separate from loading, parsing, CLI orchestration, and presentation.
 
-## Planned Capabilities
+## Authentication Rules
 
-Later phases may add transparent, tested rules for suspicious authentication and web activity. LogHunter currently does not claim to detect brute-force attacks, malware, compromised hosts, confirmed intrusions, or malicious IPs.
+- Repeated failures are grouped by source IP. Five through nine failures trigger AUTH-001.
+- Ten or more failures trigger AUTH-002; AUTH-001 is suppressed for that source to avoid redundant noise.
+- Three invalid-user events from one source trigger AUTH-003.
 
-## Supported Log Types
+Mistyped credentials, stale automation, and misconfigured services are possible benign explanations for authentication findings.
 
-- `auth`: selected synthetic OpenSSH accepted, failed-password, and invalid-user events.
-- `web`: Apache/Nginx common or combined access records with method, path, status, and optional user agent.
+## Web Rules
 
-Inference is conservative: filenames containing `auth` select auth; `access` or `web` select web. Use `--type` for ambiguous names.
+- WEB-001 groups HTTP 4xx responses by source. Its severity is LOW because broken links, crawlers, and outdated clients commonly generate client errors.
+- WEB-002 uses a small, deterministic, case-insensitive path list: `/.env`, `/.git/`, `/wp-admin`, `/phpmyadmin`, and `/admin`. Query strings are ignored for matching.
+- WEB-003 groups HTTP 5xx responses by source. Application faults are a primary possible explanation.
 
-## Project Structure
+## Rule ID Table
 
-```text
-loghunter/          Application, model, loader, CLI, and parsers
-samples/            Synthetic demonstration logs
-tests/              Standard-library unit tests
-pyproject.toml      Package metadata and CLI entry point
-```
+| Rule | Description | Severity | Default threshold |
+|---|---|---:|---:|
+| AUTH-001 | Repeated failed authentication | MEDIUM | 5 failures |
+| AUTH-002 | Potential brute-force pattern | HIGH | 10 failures |
+| AUTH-003 | Repeated invalid-user attempts | MEDIUM | 3 attempts |
+| WEB-001 | Repeated HTTP client errors | LOW | 8 responses |
+| WEB-002 | Potential sensitive-path probing | MEDIUM | 1 path match |
+| WEB-003 | Repeated HTTP server errors | MEDIUM | 5 responses |
+
+## Severity Meanings
+
+- **HIGH:** A stronger heuristic pattern that warrants timely review; it is not proof of compromise.
+- **MEDIUM:** A notable pattern that merits investigation and contextual validation.
+- **LOW:** An observation with common benign explanations that may still be useful during review.
+- **INFO:** Contextual information. No Phase 2 rule currently emits INFO findings.
+
+## Thresholds
+
+Thresholds are centralized in `loghunter/detection/constants.py`. Phase 2 intentionally has no external configuration format or overall numeric risk score.
 
 ## Installation
 
-Requires Python 3.11+. Runtime dependencies are standard-library only.
+LogHunter requires Python 3.11 or newer and has no third-party runtime dependencies.
 
 ```powershell
 python -m venv .venv
@@ -44,31 +60,24 @@ python -m venv .venv
 python -m pip install -e .
 ```
 
-## Usage
+## CLI Examples
 
 ```powershell
 python -m loghunter --help
-python -m loghunter analyze samples/auth_sample.log
+python -m loghunter analyze samples/auth_sample.log --type auth
 python -m loghunter analyze samples/access_sample.log --type web
+python -m loghunter analyze samples/auth_sample.log --type auth --no-detect
 ```
 
-## Example Output
+The `--no-detect` option retains parsing and counting while skipping all detection rules. If no rule matches, LogHunter states that no findings matched the current rule set—not that the system is secure or free from threats.
 
-```text
-========================================
-              LOGHUNTER
-========================================
+## Security Boundaries
 
-File: samples/auth_sample.log
-Log type: auth
+LogHunter analyzes only an explicitly supplied local regular file in read-only streaming mode. It makes no network requests, scans, authentication attempts, external reputation queries, or active-response changes. It executes no log-derived commands, modifies no source log, blocks no address, and changes no firewall rule. Repository fixtures contain only synthetic identities and documentation-safe IP addresses.
 
-Lines processed: 5
-Parsed records: 3
-Unrecognized records: 2
+## False-Positive Considerations
 
-Phase 1 parsing complete.
-Threat detection is not enabled yet.
-```
+Findings require analyst context. Failed logins can result from typing errors, stale automation, misconfiguration, or guessing. Repeated 404 responses can come from broken links, crawlers, outdated clients, or reconnaissance. Sensitive-path requests can arise from authorized security testing, accidental clients, or probing. Server errors can reflect application defects rather than hostile behavior.
 
 ## Testing
 
@@ -77,18 +86,15 @@ python -m unittest discover -s tests -p "test_*.py"
 python -m compileall loghunter
 ```
 
-Tests use only local synthetic data and make no network calls.
-
-## Security & Privacy
-
-Phase 1 reads explicitly supplied local regular files in read-only streaming mode. It does not crawl directories, execute log content, scan systems, call external services, or modify logs. Fixtures contain synthetic identities and documentation-safe IPs. Raw records are not printed by default.
+Tests are deterministic, local, synthetic, and make no network calls.
 
 ## Limitations
 
-Parsing covers a deliberately small subset. Timestamps remain source strings, IPs are extracted but not classified, multiline records are unsupported, and invalid UTF-8 is replaced. Type inference uses filenames rather than content.
+Rules operate across the supplied dataset, not reliable time windows. Source timestamps remain strings, IPv4/IPv6 values are not semantically validated, parser coverage is intentionally narrow, and findings require human review. AUTH-004 success-after-failures and request-rate rules are deferred until timestamps are normalized reliably.
 
 ## Roadmap
 
 1. Phase 1: safe loading, normalization, parsing, CLI, fixtures, and tests.
-2. Phase 2: explicit rule interfaces and tested authentication/web detection rules.
-3. Later: reporting improvements and carefully scoped enrichment when implemented.
+2. Phase 2: structured findings and transparent authentication/web rules.
+3. Phase 3: normalized timestamps, time-window correlation, and richer reporting.
+4. Later: simple external threshold configuration and additional well-tested defensive rules.

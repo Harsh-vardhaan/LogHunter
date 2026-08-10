@@ -5,7 +5,7 @@ from loghunter.loader import LogLoadError, iter_log_lines
 
 class LoaderTests(unittest.TestCase):
     def test_valid_auth_log_loads(self):
-        self.assertEqual(len(list(iter_log_lines("samples/auth_sample.log"))), 5)
+        self.assertEqual(len(list(iter_log_lines("samples/auth_sample.log"))), 22)
     def test_missing_file_is_controlled(self):
         with self.assertRaises(LogLoadError):
             list(iter_log_lines("samples/not-present.log"))

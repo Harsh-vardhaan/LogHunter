@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "loghunter"
-version = "0.1.0"
-description = "A local CLI security log parser prepared for rule-based detection."
+dynamic = ["version"]
+description = "A local CLI security log parser with transparent rule-based detection."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
@@ -15,3 +15,6 @@ loghunter = "loghunter.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["loghunter*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "loghunter.__version__"}
