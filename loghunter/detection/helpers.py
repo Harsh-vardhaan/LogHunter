@@ -26,3 +26,13 @@ def dominant_username(events: Iterable[LogEvent]) -> str | None:
 def event_range(events: list[LogEvent]) -> tuple[datetime | None, datetime | None]:
     timestamps = [event.timestamp for event in events if event.timestamp]
     return (min(timestamps), max(timestamps)) if timestamps else (None, None)
+
+
+def source_files(events: Iterable[LogEvent]) -> tuple[str, ...]:
+    """Return concise, deterministic source context for a finding."""
+    files: set[str] = set()
+    for event in events:
+        files.update(event.source_files)
+        if event.source_file:
+            files.add(event.source_file)
+    return tuple(sorted(files))

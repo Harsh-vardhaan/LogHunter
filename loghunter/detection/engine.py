@@ -8,6 +8,8 @@ from .base import DetectionRule
 from .models import Finding
 from .web_rules import WEB_RULES
 
+KNOWN_RULE_IDS = frozenset(rule.rule_id for rule in (*AUTH_RULES, *WEB_RULES))
+
 
 class DetectionEngine:
     def __init__(self, rules: Mapping[str, Sequence[DetectionRule]] | None = None) -> None:

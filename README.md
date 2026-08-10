@@ -1,36 +1,51 @@
 # LogHunter
 
-A Python command-line defensive security tool that parses local authentication and web logs, normalizes supported records, and evaluates transparent rule-based heuristics.
+A Python command-line defensive security tool for safely parsing local authentication and web logs, correlating events, and presenting transparent rule-based findings for analyst review.
 
 ## Overview
 
-LogHunter helps analysts identify patterns worth reviewing without making unsupported claims. It operates offline on an explicitly supplied local file and reports structured findings without dumping raw records.
+LogHunter analyzes one or more explicitly supplied local files. It normalizes supported records, correlates compatible timestamps across files, applies detection rules, filters the resulting findings, and produces text or JSON investigation reports. It never treats a heuristic as proof of compromise.
 
-## Phase 3 Status
+## Phase 4 Status
 
-Version 0.3.0 adds timezone-aware timestamp normalization, reusable time-window correlation, AUTH-004 success-after-failures detection, and deterministic JSON reports. Findings are heuristic indicators and do not prove compromise, malicious intent, or successful exploitation.
+Version 0.4.0 adds safe multi-file analysis, cross-file correlation, analyst-facing filters, aggregate and per-file summaries, source-file provenance, and report schema version 1.0.
 
-## Timestamp Normalization
+## Multi-File Analysis
 
-Successfully parsed `LogEvent.timestamp` values are timezone-aware Python `datetime` objects. Events with missing or malformed timestamps are safely ignored by time-dependent rules rather than being assigned invented times.
+Multiple files can be analyzed when they share one explicit log type:
 
-Linux syslog-style authentication records contain month, day, and time but no year or timezone. `AuthLogParser` therefore accepts an explicit reference year; CLI analysis uses the current UTC year by default and treats the timestamp as UTC. The inferred year and UTC assumption come from analysis context, not the log line, and remain a documented limitation.
+```powershell
+python -m loghunter analyze samples/auth_sample.log samples/auth_extra.log --type auth
+```
 
-Apache/Nginx timestamps include a year and numeric UTC offset. LogHunter parses both and preserves the recorded offset. Malformed timestamp fields make that record unrecognized without crashing analysis.
+All paths are validated before parsing. Missing files, directories, symbolic links, and duplicate path arguments fail the complete invocation with a controlled error. LogHunter never discovers files recursively or analyzes paths that were not supplied explicitly.
 
-## Time-Window Correlation
+Each file is parsed independently and receives its own summary. Normalized events are combined and sorted chronologically for detection. This supports split or rotated logs while retaining their supplied source paths. Cross-file correlation assumes timestamps and inferred auth years are compatible.
 
-Authentication rules use a centralized 10-minute window. Correlation sorts timestamped events deterministically and groups them by source IP or by source IP plus username where appropriate. Untimestamped events do not participate in time-aware rules.
+## Source Context
 
-AUTH-001 now requires five failures from one source within ten minutes. AUTH-002 requires ten failures within ten minutes and suppresses redundant AUTH-001 output for that source. AUTH-003 requires three invalid-user events within ten minutes.
+Every parsed `LogEvent` carries `source_file`. Each finding contains a sorted, unique `source_files` tuple derived only from events that contributed to that finding. Text output shows compact filenames; JSON preserves the supplied path strings. Raw file contents are never merged or included in reports.
 
-AUTH-004 correlates five failures followed by a success from the same source IP and username within ten minutes. It highlights an event sequence worth review, not proof that credentials or an account were compromised.
+## Analyst Filters
 
-## Detection Engine
+Filters are applied after the complete detection result is generated, so they narrow the analyst’s view without changing detection behavior or confidence.
 
-Parsers produce immutable normalized events. Applicable rules return immutable `Finding` objects, which the engine sorts by severity, rule ID, source IP, and username. Loading, parsing, correlation, detection, reporting, and CLI presentation remain separated.
+```powershell
+python -m loghunter analyze samples/auth_sample.log --type auth --severity HIGH
+python -m loghunter analyze samples/auth_sample.log --type auth --rule AUTH-004
+python -m loghunter analyze samples/auth_sample.log --type auth --source-ip 203.0.113.50
+python -m loghunter analyze samples/auth_sample.log --type auth --severity HIGH --source-ip 203.0.113.50
+```
 
-## Rule Table
+- `--severity` is an exact, case-insensitive match for INFO, LOW, MEDIUM, or HIGH.
+- `--rule` accepts one known rule ID and rejects unknown IDs.
+- `--source-ip` performs an exact IPv4/IPv6 match using standard-library validation. CIDR, geolocation, and reputation lookup are not supported.
+
+When detections exist but filters remove all of them, LogHunter reports that findings were generated but none matched the active filters. It never says that no threats exist.
+
+## Detection and Correlation
+
+Authentication rules use timezone-aware timestamps and a centralized 10-minute window. Traditional syslog auth records omit the year and timezone, so the parser uses an explicit reference year and treats them as UTC; the CLI defaults to the current UTC year. Web timestamps preserve their recorded numeric offset. Untimestamped events do not participate in time-aware rules.
 
 | Rule | Description | Severity | Threshold / window |
 |---|---|---:|---:|
@@ -38,73 +53,104 @@ Parsers produce immutable normalized events. Applicable rules return immutable `
 | AUTH-002 | Potential brute-force pattern | HIGH | 10 / 10 minutes |
 | AUTH-003 | Repeated invalid-user attempts | MEDIUM | 3 / 10 minutes |
 | AUTH-004 | Success after repeated failures | HIGH | 5 failures + success / 10 minutes |
-| WEB-001 | Repeated HTTP client errors | LOW | 8 responses / dataset |
-| WEB-002 | Potential sensitive-path probing | MEDIUM | 1 path match / dataset |
-| WEB-003 | Repeated HTTP server errors | MEDIUM | 5 responses / dataset |
+| WEB-001 | Repeated HTTP client errors | LOW | 8 / combined dataset |
+| WEB-002 | Potential sensitive-path probing | MEDIUM | 1 match / combined dataset |
+| WEB-003 | Repeated HTTP server errors | MEDIUM | 5 / combined dataset |
 
-Web thresholds remain dataset-wide in Phase 3, but findings use normalized web timestamps for `first_seen` and `last_seen`.
+AUTH-002 suppresses redundant AUTH-001 output for the same source. Web rules remain dataset-wide but support combined explicitly supplied files and populate finding timestamps.
 
-## Severity Meanings
+## Investigation Summaries
 
-- **HIGH:** A stronger heuristic pattern warranting timely review; not proof of compromise.
-- **MEDIUM:** A notable pattern requiring contextual validation.
-- **LOW:** An observation with common benign explanations that may still help an investigation.
-- **INFO:** Contextual information. No current rule emits INFO.
+Text and JSON reports include:
+
+- files analyzed;
+- aggregate processed, parsed, and unrecognized counts;
+- per-file parsing summaries;
+- filtered and pre-filter finding totals;
+- severity counts;
+- unique source-IP count;
+- triggered rule IDs;
+- active analyst filters.
+
+LogHunter does not calculate an overall numeric risk score.
+
+## Text and JSON Output
+
+Text is the default:
+
+```powershell
+python -m loghunter analyze samples/auth_sample.log --type auth
+```
+
+Machine-readable output:
+
+```powershell
+python -m loghunter analyze samples/auth_sample.log --type auth --format json
+python -m loghunter analyze samples/auth_sample.log samples/auth_extra.log --type auth --format json
+```
+
+JSON stdout contains valid JSON only. Routine analysis errors go to stderr with a nonzero exit status.
+
+## JSON Report Schema
+
+The application version and report schema version are independent:
+
+```json
+{
+  "schema": {
+    "name": "loghunter-report",
+    "version": "1.0"
+  },
+  "tool": {
+    "name": "LogHunter",
+    "version": "0.4.0"
+  },
+  "analysis": {
+    "log_type": "auth",
+    "detection_enabled": true,
+    "files_analyzed": 2
+  },
+  "filters": {
+    "severity": null,
+    "rule": null,
+    "source_ip": null
+  },
+  "summary": {},
+  "files": [],
+  "findings": [],
+  "disclaimer": "Findings are heuristic indicators and do not prove compromise, malicious intent, or successful exploitation."
+}
+```
+
+`REPORT_SCHEMA_VERSION` is the authoritative schema version. Finding timestamps use ISO 8601 and source provenance is represented by `source_files`. Raw log lines are excluded.
+
+## Parsing Without Detection
+
+Multi-file parsing works with `--no-detect`:
+
+```powershell
+python -m loghunter analyze samples/auth_sample.log samples/auth_extra.log --type auth --no-detect
+```
+
+Finding filters cannot be combined with `--no-detect`; the CLI rejects those combinations clearly.
+
+## False-Positive and Analyst Guidance
+
+Filters help focus an investigation but do not increase detection confidence. Multi-file correlation adds context but remains heuristic. Repeated failures can arise from mistakes, stale credentials, password-manager problems, or misconfiguration. Client errors may come from broken links or crawlers; sensitive-path requests may be authorized testing; server errors may be application defects. Findings always require analyst review.
+
+## Security and Privacy
+
+LogHunter opens only explicitly supplied regular local files in read-only streaming mode. It performs no network calls, scanning, credential testing, exploitation, threat-intelligence queries, blocking, account changes, firewall changes, or active response. It executes no log content and modifies no source log. Repository fixtures contain only synthetic identities and documentation-safe IP addresses.
 
 ## Installation
 
-LogHunter requires Python 3.11 or newer and has no third-party runtime dependencies.
+Python 3.11 or newer is required. Runtime dependencies are standard-library only.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e .
 ```
-
-## CLI Examples
-
-Human-readable analysis:
-
-```powershell
-python -m loghunter analyze samples/auth_sample.log --type auth
-python -m loghunter analyze samples/access_sample.log --type web
-python -m loghunter analyze samples/auth_sample.log --type auth --no-detect
-```
-
-Machine-readable analysis:
-
-```powershell
-python -m loghunter analyze samples/auth_sample.log --type auth --format json
-```
-
-`--format text` is the default. JSON stdout contains only valid JSON with tool/version metadata, parse summary, detection state, structured findings, ISO 8601 timestamps, and the safety disclaimer. Raw log lines are excluded. `--no-detect` works with either output format.
-
-## JSON Structure
-
-```json
-{
-  "tool": "LogHunter",
-  "version": "0.3.0",
-  "file": "samples/auth_sample.log",
-  "log_type": "auth",
-  "summary": {
-    "lines_processed": 35,
-    "parsed_records": 32,
-    "unrecognized_records": 3
-  },
-  "detection_enabled": true,
-  "findings": [],
-  "disclaimer": "Findings are heuristic indicators and do not prove compromise, malicious intent, or successful exploitation."
-}
-```
-
-## False-Positive Considerations
-
-Time correlation improves context but does not establish intent. Repeated failures and a later success can result from password mistakes, stale credential caches, password-manager problems, or a legitimate user eventually entering the correct password. Client errors can originate from broken links or crawlers; sensitive-path requests can be authorized testing; server errors can be application defects. Every finding requires investigation.
-
-## Security & Privacy
-
-LogHunter analyzes only an explicitly supplied local regular file in read-only streaming mode. It makes no network requests, scans, authentication attempts, external reputation queries, or active-response changes. It executes no log-derived commands, modifies no source logs, blocks no address, and changes no firewall rule. Fixtures contain only synthetic identities and documentation-safe IP addresses.
 
 ## Testing
 
@@ -117,11 +163,12 @@ Tests are deterministic, local, synthetic, and make no network calls.
 
 ## Limitations
 
-Auth years and UTC timezone are contextual assumptions because traditional syslog records omit them. Cross-year log sets require the caller to choose an appropriate reference year. Phase 3 produces at most one finding per rule/group, does not correlate across files, does not persist state, and leaves web thresholds dataset-wide. Parser coverage remains intentionally narrow.
+All files in one invocation must share a log type. Auth year and UTC timezone remain contextual assumptions. Cross-file analysis does not persist state or detect rotation automatically. Duplicate paths are rejected; byte-for-byte-equivalent parsed records with identical normalized fields are collapsed for detection while their source provenance is merged. Web rules remain dataset-wide. Only one rule ID can be selected per invocation.
 
 ## Roadmap
 
-1. Phase 1: safe loading, normalization, parsers, CLI, fixtures, and tests.
+1. Phase 1: safe loading, normalization, parsers, CLI, and tests.
 2. Phase 2: structured findings and transparent rules.
-3. Phase 3: normalized timestamps, time-window correlation, AUTH-004, and JSON reporting.
-4. Phase 4: analyst-oriented report filtering, schemas, and careful multi-file workflows without active response.
+3. Phase 3: normalized timestamps, time correlation, AUTH-004, and JSON reporting.
+4. Phase 4: safe multi-file workflows, filters, provenance, and schema metadata.
+5. Phase 5: external threshold configuration and formal schema validation, without active response.

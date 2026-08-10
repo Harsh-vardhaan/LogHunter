@@ -1,106 +1,88 @@
-"""Command-line orchestration and presentation."""
+"""Command-line validation and orchestration."""
+
 import argparse
 import json
 import sys
-from collections import Counter
-from dataclasses import dataclass
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
-from .detection import DetectionEngine, Finding, Severity
-from .loader import LogLoadError, iter_log_lines, validate_log_file
-from .models import AnalysisSummary, LogEvent
+
+from .analysis import Investigation, analyze_files, infer_log_type, parse_file
+from .detection import Finding
+from .detection.engine import KNOWN_RULE_IDS
+from .detection.models import Severity
+from .filters import AnalystFilters, normalize_ip
+from .loader import LogLoadError
+from .models import AnalysisSummary
 from .parsers import PARSERS
-from .reporting import DISCLAIMER, build_json_report
+from .reporting import build_json_report, format_text_report
 
 
-@dataclass(frozen=True, slots=True)
-class AnalysisResult:
-    summary: AnalysisSummary
-    events: tuple[LogEvent, ...]
+def _severity(value: str) -> Severity:
+    try:
+        return Severity(value.upper())
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("severity must be INFO, LOW, MEDIUM, or HIGH") from exc
+
+
+def _rule_id(value: str) -> str:
+    normalized = value.upper()
+    if normalized not in KNOWN_RULE_IDS:
+        raise argparse.ArgumentTypeError(f"unknown rule ID: {value}")
+    return normalized
+
+
+def _source_ip(value: str) -> str:
+    try:
+        return normalize_ip(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"invalid IP address: {value}") from exc
+
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="loghunter", description="Parse local logs and evaluate transparent security detection rules.")
+    parser = argparse.ArgumentParser(prog="loghunter", description="Analyze one or more explicit local logs with transparent security rules.")
     commands = parser.add_subparsers(dest="command", required=True)
-    analyze = commands.add_parser("analyze", help="parse a local log and report basic counts")
-    analyze.add_argument("file", help="path to a local log file")
-    analyze.add_argument("--type", choices=sorted(PARSERS), dest="log_type", help="log format (otherwise inferred from filename)")
+    analyze = commands.add_parser("analyze", help="parse local logs and report investigation findings")
+    analyze.add_argument("files", nargs="+", help="one or more local log files")
+    analyze.add_argument("--type", choices=sorted(PARSERS), dest="log_type", help="shared log format (required for multiple files)")
     analyze.add_argument("--no-detect", action="store_true", help="parse records without running detection rules")
     analyze.add_argument("--format", choices=("text", "json"), default="text", help="report format (default: text)")
+    analyze.add_argument("--severity", type=_severity, help="show findings with this exact severity")
+    analyze.add_argument("--rule", type=_rule_id, help="show findings for one validated rule ID")
+    analyze.add_argument("--source-ip", type=_source_ip, help="show findings for one exact IPv4/IPv6 address")
     return parser
-
-def infer_log_type(path: Path) -> str:
-    name = path.name.lower()
-    if "auth" in name:
-        return "auth"
-    if "access" in name or "web" in name:
-        return "web"
-    raise LogLoadError("Unable to infer log type from filename; specify --type auth or --type web.")
-
-def parse_file(file_path: str, log_type: str | None = None, *, reference_year: int | None = None) -> AnalysisResult:
-    path = validate_log_file(file_path)
-    selected = log_type or infer_log_type(path)
-    parser = PARSERS[selected](reference_year=reference_year) if selected == "auth" else PARSERS[selected]()
-    total = 0
-    events: list[LogEvent] = []
-    for line in iter_log_lines(path):
-        total += 1
-        event = parser.parse_line(line)
-        if event is not None:
-            events.append(event)
-    summary = AnalysisSummary(str(path), selected, total, len(events))
-    return AnalysisResult(summary, tuple(events))
 
 
 def analyze_file(file_path: str, log_type: str | None = None) -> AnalysisSummary:
-    """Compatibility wrapper retained for Phase 1 callers."""
+    """Compatibility wrapper retained for earlier callers."""
     return parse_file(file_path, log_type).summary
 
+
 def format_summary(summary: AnalysisSummary, findings: Sequence[Finding] | None = None) -> str:
-    rule = "=" * 40
-    lines = [rule, "              LOGHUNTER", rule, "", f"File: {summary.file_path}",
-             f"Log type: {summary.log_type}", "", f"Lines processed: {summary.total_lines}",
-             f"Parsed records: {summary.parsed_lines}", f"Unrecognized records: {summary.unrecognized_lines}"]
-    if findings is None:
-        lines.extend(("", "Parsing complete. Detection was skipped (--no-detect)."))
-    else:
-        lines.extend(("", "-" * 40, "SECURITY FINDINGS", "-" * 40, ""))
-        if not findings:
-            lines.extend(("No security findings matched the current rule set.",
-                          "Only implemented rules were evaluated against the supplied dataset."))
-        for finding in findings:
-            lines.extend(_format_finding(finding))
-        counts = Counter(finding.severity for finding in findings)
-        severity_order = (Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO)
-        lines.extend(("", "Findings:", *(f"{severity.value.title()}: {counts[severity]}" for severity in severity_order),
-                      "", f"LogHunter {DISCLAIMER.lower()}"))
-    lines.extend(("", rule))
-    return "\n".join(lines)
+    """Compatibility text formatter for earlier tests and integrations."""
+    filters = AnalystFilters()
+    investigation = Investigation(
+        summary.log_type, (summary,), (), findings is not None,
+        tuple(findings or ()), tuple(findings or ()), filters,
+    )
+    return format_text_report(investigation)
 
-
-def _format_finding(finding: Finding) -> list[str]:
-    lines = [f"[{finding.severity.value}] {finding.rule_id}", finding.title]
-    if finding.source_ip:
-        lines.append(f"Source IP: {finding.source_ip}")
-    if finding.username:
-        lines.append(f"Username: {finding.username}")
-    lines.append(f"Events: {finding.event_count}")
-    if finding.first_seen:
-        lines.append(f"First seen: {finding.first_seen.isoformat()}")
-    if finding.last_seen:
-        lines.append(f"Last seen:  {finding.last_seen.isoformat()}")
-    lines.extend(("", finding.description,
-                  f"Evidence: {finding.evidence_summary}", "", f"Recommendation: {finding.recommendation}", "", "-" * 40, ""))
-    return lines
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if len(args.files) > 1 and not args.log_type:
+        parser.error("--type is required when analyzing multiple files")
+    if args.no_detect and any((args.severity, args.rule, args.source_ip)):
+        parser.error("finding filters cannot be used together with --no-detect")
+
     try:
-        result = parse_file(args.file, args.log_type)
-        findings = None if args.no_detect else DetectionEngine().detect(result.summary.log_type, result.events)
+        selected = args.log_type or infer_log_type(Path(args.files[0]))
+        filters = AnalystFilters(args.severity, args.rule, args.source_ip)
+        investigation = analyze_files(args.files, selected, detect=not args.no_detect, filters=filters)
         if args.format == "json":
-            print(json.dumps(build_json_report(result.summary, findings), indent=2, sort_keys=True))
+            print(json.dumps(build_json_report(investigation), indent=2, sort_keys=True))
         else:
-            print(format_summary(result.summary, findings))
+            print(format_text_report(investigation))
         return 0
     except LogLoadError as exc:
         print(f"Error: {exc}", file=sys.stderr)

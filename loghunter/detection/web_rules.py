@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 from ..models import LogEvent
 from .base import DetectionRule
 from .constants import SENSITIVE_PATHS, WEB_4XX_THRESHOLD, WEB_5XX_THRESHOLD
-from .helpers import event_range, group_by_source
+from .helpers import event_range, group_by_source, source_files
 from .models import Finding, Severity
 
 
@@ -25,7 +25,7 @@ class RepeatedClientErrorsRule(DetectionRule):
                     "Repeated 4xx responses may come from broken links, crawlers, outdated clients, or reconnaissance.",
                     f"{len(matches)} HTTP 4xx responses were associated with {source_ip}.",
                     "Review the requested paths and client behavior to determine whether the errors are expected.",
-                    source_ip, None, len(matches), *event_range(matches)))
+                    source_ip, None, len(matches), *event_range(matches), source_files=source_files(matches)))
         return findings
 
 
@@ -51,7 +51,7 @@ class SensitivePathProbingRule(DetectionRule):
                 "Requests matched a small case-insensitive list of sensitive paths; security testing, accidental requests, or reconnaissance are possible explanations.",
                 f"{len(source_events)} matching requests from {source_ip}; paths: {', '.join(paths)}.",
                 "Review the requests and application exposure, and verify whether the activity was authorized or expected.",
-                source_ip, None, len(source_events), *event_range(source_events)))
+                source_ip, None, len(source_events), *event_range(source_events), source_files=source_files(source_events)))
         return findings
 
 
@@ -66,7 +66,7 @@ class RepeatedServerErrorsRule(DetectionRule):
                     "Repeated 5xx responses may reflect application problems, malformed requests, unusual clients, or possible probing.",
                     f"{len(matches)} HTTP 5xx responses were associated with {source_ip}.",
                     "Review application health and the associated requests to identify the cause of the server errors.",
-                    source_ip, None, len(matches), *event_range(matches)))
+                    source_ip, None, len(matches), *event_range(matches), source_files=source_files(matches)))
         return findings
 
 

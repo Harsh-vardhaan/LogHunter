@@ -17,6 +17,8 @@ class LogEvent:
     path: str | None = None
     http_status: int | None = None
     user_agent: str | None = None
+    source_file: str | None = None
+    source_files: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.timestamp is not None:
@@ -24,6 +26,8 @@ class LogEvent:
                 raise TypeError("timestamp must be a datetime or None")
             if self.timestamp.utcoffset() is None:
                 raise ValueError("timestamp must be timezone-aware")
+        if tuple(sorted(set(self.source_files))) != self.source_files:
+            raise ValueError("source_files must be unique and sorted")
 
 
 @dataclass(frozen=True, slots=True)

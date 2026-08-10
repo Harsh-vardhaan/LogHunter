@@ -30,6 +30,7 @@ class Finding:
     event_count: int = 1
     first_seen: datetime | None = None
     last_seen: datetime | None = None
+    source_files: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.rule_id or not self.title:
@@ -46,3 +47,5 @@ class Finding:
                     raise ValueError(f"{name} must be timezone-aware")
         if self.first_seen and self.last_seen and self.first_seen > self.last_seen:
             raise ValueError("first_seen cannot be later than last_seen")
+        if tuple(sorted(set(self.source_files))) != self.source_files:
+            raise ValueError("source_files must be unique and sorted")

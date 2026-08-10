@@ -11,7 +11,7 @@ from .constants import (
     FAILED_AUTH_MEDIUM_THRESHOLD,
     INVALID_USER_THRESHOLD,
 )
-from .helpers import dominant_username, event_range, group_by_source
+from .helpers import dominant_username, event_range, group_by_source, source_files
 from .models import Finding, Severity
 from .time_utils import first_threshold_window, group_by_source_and_username
 
@@ -37,6 +37,7 @@ class RepeatedFailedAuthenticationRule(DetectionRule):
                     f"{len(window_events)} failed authentication events from {source_ip} reached the threshold within 10 minutes.",
                     "Review authentication activity from this source, verify whether attempts are expected, and apply appropriate access controls if unauthorized.",
                     source_ip, dominant_username(window_events), len(window_events), first, last,
+                    source_files=source_files(window_events),
                 ))
         return findings
 
@@ -57,6 +58,7 @@ class PotentialBruteForceRule(DetectionRule):
                     f"{len(window_events)} failed authentication events were correlated for {source_ip}.",
                     "Review the source and associated account activity, verify whether attempts are expected, and consider appropriate authentication controls.",
                     source_ip, dominant_username(window_events), len(window_events), first, last,
+                    source_files=source_files(window_events),
                 ))
         return findings
 
@@ -78,6 +80,7 @@ class RepeatedInvalidUserRule(DetectionRule):
                     f"{len(window_events)} invalid-user events from {source_ip}; attempted usernames: {', '.join(names)}.",
                     "Review the source and attempted usernames, confirm whether behavior is legitimate, and apply appropriate authentication controls if necessary.",
                     source_ip, None, len(window_events), *event_range(window_events),
+                    source_files=source_files(window_events),
                 ))
         return findings
 
@@ -106,6 +109,7 @@ class SuccessAfterFailuresRule(DetectionRule):
                         f"{AUTH_SUCCESS_AFTER_FAILURE_THRESHOLD} failures followed by a success were correlated within 10 minutes.",
                         "Review the source IP, affected account, and surrounding authentication logs; verify the login was legitimate and rotate credentials only if the investigation supports it.",
                         source_ip, username, len(correlated), *event_range(correlated),
+                        source_files=source_files(correlated),
                     ))
                     break
         return findings

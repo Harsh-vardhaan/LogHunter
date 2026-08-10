@@ -22,4 +22,5 @@ dist/
 *.log
 !samples/
 !samples/auth_sample.log
+!samples/auth_extra.log
 !samples/access_sample.log

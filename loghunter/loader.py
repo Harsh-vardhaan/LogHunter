@@ -12,6 +12,8 @@ def validate_log_file(file_path: str | Path) -> Path:
     path = Path(file_path)
     if not path.exists():
         raise LogLoadError(f"Log file does not exist: {path}")
+    if path.is_symlink():
+        raise LogLoadError(f"Symbolic-link log paths are not supported: {path}")
     if not path.is_file():
         raise LogLoadError(f"Log path is not a regular file: {path}")
     return path
