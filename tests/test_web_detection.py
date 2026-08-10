@@ -1,11 +1,12 @@
 import unittest
+from datetime import datetime, timezone
 
 from loghunter.detection.web_rules import RepeatedClientErrorsRule, RepeatedServerErrorsRule, SensitivePathProbingRule
 from loghunter.models import LogEvent
 
 
 def web_event(ip="198.51.100.10", status=200, path="/index.html"):
-    return LogEvent("15/Jan/2026:09:00:01 +0000", ip, None, "http-request", "recorded", "synthetic", "web",
+    return LogEvent(datetime(2026, 1, 15, 9, tzinfo=timezone.utc), ip, None, "http-request", "recorded", "synthetic", "web",
                     http_method="GET", path=path, http_status=status)
 
 
@@ -32,5 +33,5 @@ class WebDetectionTests(unittest.TestCase):
         self.assertEqual(RepeatedClientErrorsRule().evaluate(events), [])
 
     def test_non_web_events_do_not_enter_detection(self):
-        event = LogEvent("Jan 15 09:00:01", "198.51.100.10", "demo-user", "login", "failed", "synthetic", "auth", path="/.env", http_status=404)
+        event = LogEvent(datetime(2026, 1, 15, 9, tzinfo=timezone.utc), "198.51.100.10", "demo-user", "login", "failed", "synthetic", "auth", path="/.env", http_status=404)
         self.assertEqual(SensitivePathProbingRule().evaluate([event]), [])

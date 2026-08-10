@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timezone
 
 from loghunter.detection.auth_rules import PotentialBruteForceRule, RepeatedFailedAuthenticationRule, RepeatedInvalidUserRule
 from loghunter.detection.engine import DetectionEngine
@@ -6,7 +7,7 @@ from loghunter.models import LogEvent
 
 
 def auth_event(ip="192.0.2.10", status="failed", action="login", username="demo-user"):
-    return LogEvent("Jan 15 09:00:01", ip, username, action, status, "synthetic", "auth")
+    return LogEvent(datetime(2026, 1, 15, 9, tzinfo=timezone.utc), ip, username, action, status, "synthetic", "auth")
 
 
 class AuthDetectionTests(unittest.TestCase):

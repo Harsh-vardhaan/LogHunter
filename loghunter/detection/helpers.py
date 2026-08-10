@@ -2,6 +2,7 @@
 
 from collections import Counter, defaultdict
 from collections.abc import Iterable
+from datetime import datetime
 
 from ..models import LogEvent
 
@@ -22,6 +23,6 @@ def dominant_username(events: Iterable[LogEvent]) -> str | None:
     return ordered[0][0] if len(ordered) == 1 or ordered[0][1] > ordered[1][1] else None
 
 
-def event_range(events: list[LogEvent]) -> tuple[str | None, str | None]:
+def event_range(events: list[LogEvent]) -> tuple[datetime | None, datetime | None]:
     timestamps = [event.timestamp for event in events if event.timestamp]
-    return (timestamps[0], timestamps[-1]) if timestamps else (None, None)
+    return (min(timestamps), max(timestamps)) if timestamps else (None, None)

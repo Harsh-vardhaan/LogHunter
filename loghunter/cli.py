@@ -1,5 +1,6 @@
 """Command-line orchestration and presentation."""
 import argparse
+import json
 import sys
 from collections import Counter
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from .detection import DetectionEngine, Finding, Severity
 from .loader import LogLoadError, iter_log_lines, validate_log_file
 from .models import AnalysisSummary, LogEvent
 from .parsers import PARSERS
+from .reporting import DISCLAIMER, build_json_report
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("file", help="path to a local log file")
     analyze.add_argument("--type", choices=sorted(PARSERS), dest="log_type", help="log format (otherwise inferred from filename)")
     analyze.add_argument("--no-detect", action="store_true", help="parse records without running detection rules")
+    analyze.add_argument("--format", choices=("text", "json"), default="text", help="report format (default: text)")
     return parser
 
 def infer_log_type(path: Path) -> str:
@@ -33,10 +36,10 @@ def infer_log_type(path: Path) -> str:
         return "web"
     raise LogLoadError("Unable to infer log type from filename; specify --type auth or --type web.")
 
-def parse_file(file_path: str, log_type: str | None = None) -> AnalysisResult:
+def parse_file(file_path: str, log_type: str | None = None, *, reference_year: int | None = None) -> AnalysisResult:
     path = validate_log_file(file_path)
     selected = log_type or infer_log_type(path)
-    parser = PARSERS[selected]()
+    parser = PARSERS[selected](reference_year=reference_year) if selected == "auth" else PARSERS[selected]()
     total = 0
     events: list[LogEvent] = []
     for line in iter_log_lines(path):
@@ -69,7 +72,7 @@ def format_summary(summary: AnalysisSummary, findings: Sequence[Finding] | None 
         counts = Counter(finding.severity for finding in findings)
         severity_order = (Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO)
         lines.extend(("", "Findings:", *(f"{severity.value.title()}: {counts[severity]}" for severity in severity_order),
-                      "", "LogHunter findings are heuristic indicators and do not prove compromise, malicious intent, or successful exploitation."))
+                      "", f"LogHunter {DISCLAIMER.lower()}"))
     lines.extend(("", rule))
     return "\n".join(lines)
 
@@ -80,7 +83,12 @@ def _format_finding(finding: Finding) -> list[str]:
         lines.append(f"Source IP: {finding.source_ip}")
     if finding.username:
         lines.append(f"Username: {finding.username}")
-    lines.extend((f"Events: {finding.event_count}", "", finding.description,
+    lines.append(f"Events: {finding.event_count}")
+    if finding.first_seen:
+        lines.append(f"First seen: {finding.first_seen.isoformat()}")
+    if finding.last_seen:
+        lines.append(f"Last seen:  {finding.last_seen.isoformat()}")
+    lines.extend(("", finding.description,
                   f"Evidence: {finding.evidence_summary}", "", f"Recommendation: {finding.recommendation}", "", "-" * 40, ""))
     return lines
 
@@ -89,7 +97,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         result = parse_file(args.file, args.log_type)
         findings = None if args.no_detect else DetectionEngine().detect(result.summary.log_type, result.events)
-        print(format_summary(result.summary, findings))
+        if args.format == "json":
+            print(json.dumps(build_json_report(result.summary, findings), indent=2, sort_keys=True))
+        else:
+            print(format_summary(result.summary, findings))
         return 0
     except LogLoadError as exc:
         print(f"Error: {exc}", file=sys.stderr)

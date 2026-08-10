@@ -15,7 +15,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(main(["analyze", "samples/auth_sample.log", "--type", "auth"]), 0)
     def test_analysis_counts(self):
         summary = analyze_file("samples/auth_sample.log", "auth")
-        self.assertEqual((summary.total_lines, summary.parsed_lines, summary.unrecognized_lines), (22, 20, 2))
+        self.assertEqual((summary.total_lines, summary.parsed_lines, summary.unrecognized_lines), (35, 32, 3))
 
     def test_cli_displays_findings_and_disclaimer(self):
         output = StringIO()

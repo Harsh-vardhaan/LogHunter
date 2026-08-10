@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timezone
 
 from loghunter.detection.engine import DetectionEngine
 from loghunter.detection.models import Finding, Severity
@@ -6,7 +7,7 @@ from loghunter.models import LogEvent
 
 
 def event(log_type="auth", ip="192.0.2.1", status="failed", action="login", http_status=None, path=None):
-    return LogEvent("Jan 15 09:00:01", ip, "demo-user", action, status, "synthetic", log_type,
+    return LogEvent(datetime(2026, 1, 15, 9, tzinfo=timezone.utc), ip, "demo-user", action, status, "synthetic", log_type,
                     path=path, http_status=http_status)
 
 
