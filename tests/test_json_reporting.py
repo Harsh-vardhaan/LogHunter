@@ -20,7 +20,7 @@ class JsonReportingTests(unittest.TestCase):
         self.assertTrue(self.raw.lstrip().startswith("{"))
 
     def test_json_contains_version_and_summary(self):
-        self.assertEqual(self.report["tool"]["version"], "0.4.0")
+        self.assertEqual(self.report["tool"]["version"], "0.5.0")
         self.assertEqual(self.report["summary"]["lines_processed"], 35)
 
     def test_json_contains_findings_and_disclaimer(self):

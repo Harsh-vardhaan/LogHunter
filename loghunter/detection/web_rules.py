@@ -3,9 +3,10 @@
 from collections.abc import Sequence
 from urllib.parse import urlsplit
 
+from ..config import DEFAULT_CONFIG, WebDetectionConfig
 from ..models import LogEvent
 from .base import DetectionRule
-from .constants import SENSITIVE_PATHS, WEB_4XX_THRESHOLD, WEB_5XX_THRESHOLD
+from .constants import SENSITIVE_PATHS
 from .helpers import event_range, group_by_source, source_files
 from .models import Finding, Severity
 
@@ -17,10 +18,14 @@ def _status_range(events: Sequence[LogEvent], start: int, end: int) -> list[LogE
 class RepeatedClientErrorsRule(DetectionRule):
     rule_id = "WEB-001"
     log_type = "web"
+
+    def __init__(self, config: WebDetectionConfig | None = None) -> None:
+        self.config = config or DEFAULT_CONFIG.web
+
     def evaluate(self, events: Sequence[LogEvent]) -> list[Finding]:
         findings = []
         for source_ip, matches in sorted(group_by_source(_status_range(events, 400, 499)).items()):
-            if len(matches) >= WEB_4XX_THRESHOLD:
+            if len(matches) >= self.config.client_error_threshold:
                 findings.append(Finding(self.rule_id, "Repeated HTTP Client Errors", Severity.LOW, "web",
                     "Repeated 4xx responses may come from broken links, crawlers, outdated clients, or reconnaissance.",
                     f"{len(matches)} HTTP 4xx responses were associated with {source_ip}.",
@@ -58,10 +63,14 @@ class SensitivePathProbingRule(DetectionRule):
 class RepeatedServerErrorsRule(DetectionRule):
     rule_id = "WEB-003"
     log_type = "web"
+
+    def __init__(self, config: WebDetectionConfig | None = None) -> None:
+        self.config = config or DEFAULT_CONFIG.web
+
     def evaluate(self, events: Sequence[LogEvent]) -> list[Finding]:
         findings = []
         for source_ip, matches in sorted(group_by_source(_status_range(events, 500, 599)).items()):
-            if len(matches) >= WEB_5XX_THRESHOLD:
+            if len(matches) >= self.config.server_error_threshold:
                 findings.append(Finding(self.rule_id, "Repeated HTTP Server Errors", Severity.MEDIUM, "web",
                     "Repeated 5xx responses may reflect application problems, malformed requests, unusual clients, or possible probing.",
                     f"{len(matches)} HTTP 5xx responses were associated with {source_ip}.",
@@ -70,4 +79,9 @@ class RepeatedServerErrorsRule(DetectionRule):
         return findings
 
 
-WEB_RULES = (RepeatedClientErrorsRule(), SensitivePathProbingRule(), RepeatedServerErrorsRule())
+def build_web_rules(config: WebDetectionConfig | None = None) -> tuple[DetectionRule, ...]:
+    effective = config or DEFAULT_CONFIG.web
+    return (RepeatedClientErrorsRule(effective), SensitivePathProbingRule(), RepeatedServerErrorsRule(effective))
+
+
+WEB_RULES = build_web_rules()

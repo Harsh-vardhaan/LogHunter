@@ -3,6 +3,7 @@
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from .config import DEFAULT_LOADED_CONFIG, LoadedConfig
 from .detection import DetectionEngine, Finding
 from .filters import AnalystFilters, apply_filters
 from .loader import LogLoadError, iter_log_lines, validate_log_file
@@ -25,6 +26,7 @@ class Investigation:
     all_findings: tuple[Finding, ...]
     findings: tuple[Finding, ...]
     filters: AnalystFilters
+    configuration: LoadedConfig = DEFAULT_LOADED_CONFIG
 
 
 def infer_log_type(path: Path) -> str:
@@ -57,6 +59,7 @@ def analyze_files(
     detect: bool = True,
     filters: AnalystFilters | None = None,
     reference_year: int | None = None,
+    configuration: LoadedConfig = DEFAULT_LOADED_CONFIG,
 ) -> Investigation:
     if not file_paths:
         raise LogLoadError("At least one log file is required.")
@@ -84,9 +87,9 @@ def analyze_files(
         key=lambda event: (event.timestamp is None, event.timestamp, event.source_file or "", event.raw_line),
     ))
     active_filters = filters or AnalystFilters()
-    all_findings = DetectionEngine().detect(log_type, events) if detect else []
+    all_findings = DetectionEngine(config=configuration.config).detect(log_type, events) if detect else []
     filtered = apply_filters(all_findings, active_filters) if detect else []
     return Investigation(
         log_type, tuple(item.summary for item in analyses), events, detect,
-        tuple(all_findings), tuple(filtered), active_filters,
+        tuple(all_findings), tuple(filtered), active_filters, configuration,
     )

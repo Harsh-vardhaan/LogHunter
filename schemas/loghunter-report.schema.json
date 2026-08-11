@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loghunter/schemas/loghunter-report-1.0.json",
+  "title": "LogHunter Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "tool", "analysis", "filters", "summary", "files", "findings", "disclaimer"],
+  "properties": {
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"const": "loghunter-report"},
+        "version": {"const": "1.0"}
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"const": "LogHunter"},
+        "version": {"type": "string", "minLength": 1}
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["log_type", "detection_enabled", "files_analyzed"],
+      "properties": {
+        "log_type": {"enum": ["auth", "web"]},
+        "detection_enabled": {"type": "boolean"},
+        "files_analyzed": {"type": "integer", "minimum": 1}
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "schema_version", "effective"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "schema_version": {"const": "1.0"},
+        "effective": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["auth", "web"],
+          "properties": {
+            "auth": {"$ref": "#/$defs/authConfig"},
+            "web": {"$ref": "#/$defs/webConfig"}
+          }
+        }
+      }
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "rule", "source_ip"],
+      "properties": {
+        "severity": {"anyOf": [{"enum": ["INFO", "LOW", "MEDIUM", "HIGH"]}, {"type": "null"}]},
+        "rule": {"anyOf": [{"type": "string", "pattern": "^(AUTH|WEB)-[0-9]{3}$"}, {"type": "null"}]},
+        "source_ip": {"type": ["string", "null"]}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files_analyzed", "lines_processed", "parsed_records", "unrecognized_records", "pre_filter_findings_total", "findings_total", "high", "medium", "low", "info", "unique_source_ips", "rules_triggered"],
+      "properties": {
+        "files_analyzed": {"type": "integer", "minimum": 1},
+        "lines_processed": {"$ref": "#/$defs/count"},
+        "parsed_records": {"$ref": "#/$defs/count"},
+        "unrecognized_records": {"$ref": "#/$defs/count"},
+        "pre_filter_findings_total": {"$ref": "#/$defs/count"},
+        "findings_total": {"$ref": "#/$defs/count"},
+        "high": {"$ref": "#/$defs/count"},
+        "medium": {"$ref": "#/$defs/count"},
+        "low": {"$ref": "#/$defs/count"},
+        "info": {"$ref": "#/$defs/count"},
+        "unique_source_ips": {"$ref": "#/$defs/count"},
+        "rules_triggered": {"type": "array", "items": {"type": "string", "pattern": "^(AUTH|WEB)-[0-9]{3}$"}, "uniqueItems": true}
+      }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "lines_processed", "parsed_records", "unrecognized_records"],
+        "properties": {
+          "file": {"type": "string", "minLength": 1},
+          "lines_processed": {"$ref": "#/$defs/count"},
+          "parsed_records": {"$ref": "#/$defs/count"},
+          "unrecognized_records": {"$ref": "#/$defs/count"}
+        }
+      }
+    },
+    "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "disclaimer": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "count": {"type": "integer", "minimum": 0},
+    "positiveThreshold": {"type": "integer", "minimum": 1, "maximum": 100000},
+    "authConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["failed_medium_threshold", "failed_high_threshold", "invalid_user_threshold", "success_after_failure_threshold", "window_minutes"],
+      "properties": {
+        "failed_medium_threshold": {"$ref": "#/$defs/positiveThreshold"},
+        "failed_high_threshold": {"$ref": "#/$defs/positiveThreshold"},
+        "invalid_user_threshold": {"$ref": "#/$defs/positiveThreshold"},
+        "success_after_failure_threshold": {"$ref": "#/$defs/positiveThreshold"},
+        "window_minutes": {"type": "integer", "minimum": 1, "maximum": 1440}
+      }
+    },
+    "webConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["client_error_threshold", "server_error_threshold"],
+      "properties": {
+        "client_error_threshold": {"$ref": "#/$defs/positiveThreshold"},
+        "server_error_threshold": {"$ref": "#/$defs/positiveThreshold"}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule_id", "title", "severity", "category", "description", "evidence_summary", "recommendation", "source_ip", "username", "event_count", "first_seen", "last_seen", "source_files"],
+      "properties": {
+        "rule_id": {"type": "string", "pattern": "^(AUTH|WEB)-[0-9]{3}$"},
+        "title": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["INFO", "LOW", "MEDIUM", "HIGH"]},
+        "category": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "evidence_summary": {"type": "string", "minLength": 1},
+        "recommendation": {"type": "string", "minLength": 1},
+        "source_ip": {"type": ["string", "null"]},
+        "username": {"type": ["string", "null"]},
+        "event_count": {"type": "integer", "minimum": 1},
+        "first_seen": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+        "last_seen": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+        "source_files": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      }
+    }
+  }
+}

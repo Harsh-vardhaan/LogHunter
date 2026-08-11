@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "auth": {
+    "failed_medium_threshold": 4,
+    "failed_high_threshold": 9,
+    "invalid_user_threshold": 3,
+    "success_after_failure_threshold": 4,
+    "window_minutes": 10
+  },
+  "web": {
+    "client_error_threshold": 7,
+    "server_error_threshold": 4
+  }
+}

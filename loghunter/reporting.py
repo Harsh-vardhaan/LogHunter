@@ -6,6 +6,7 @@ from typing import Any
 
 from . import __version__
 from .analysis import Investigation
+from .config import CONFIG_SCHEMA_VERSION, LoadedConfig
 from .detection.models import Finding
 
 DISCLAIMER = "Findings are heuristic indicators and do not prove compromise, malicious intent, or successful exploitation."
@@ -70,6 +71,14 @@ def build_json_report(investigation: Investigation) -> dict[str, Any]:
             "detection_enabled": investigation.detection_enabled,
             "files_analyzed": len(investigation.files),
         },
+        "configuration": {
+            "source": investigation.configuration.source,
+            "schema_version": CONFIG_SCHEMA_VERSION,
+            "effective": {
+                "auth": investigation.configuration.config.to_dict()["auth"],
+                "web": investigation.configuration.config.to_dict()["web"],
+            },
+        },
         "filters": _filters(investigation),
         "summary": _summary(investigation),
         "files": [
@@ -88,7 +97,9 @@ def build_json_report(investigation: Investigation) -> dict[str, Any]:
 
 def format_text_report(investigation: Investigation) -> str:
     rule = "=" * 48
-    lines = [rule, "                   LOGHUNTER", rule, "", f"Log type: {investigation.log_type}",
+    config_label = investigation.configuration.source
+    lines = [rule, f"                LOGHUNTER {__version__}", rule, "",
+             f"Configuration: {config_label} (schema {CONFIG_SCHEMA_VERSION})", f"Log type: {investigation.log_type}",
              f"Files analyzed: {len(investigation.files)}", "", "FILE SUMMARY"]
     for item in investigation.files:
         lines.append(f"- {Path(item.file_path).name}: {item.total_lines} lines / {item.parsed_lines} parsed / {item.unrecognized_lines} unrecognized")
@@ -120,6 +131,22 @@ def format_text_report(investigation: Investigation) -> str:
                 lines.append(f"{label}: {value}")
     lines.extend(("", DISCLAIMER, rule))
     return "\n".join(lines)
+
+
+def format_config_check(configuration: LoadedConfig) -> str:
+    auth = configuration.config.auth
+    web = configuration.config.web
+    return "\n".join((
+        "LOGHUNTER CONFIGURATION CHECK", "", f"File: {configuration.source}",
+        f"Schema version: {CONFIG_SCHEMA_VERSION}", "Status: VALID", "", "Authentication:",
+        f"- failed medium threshold: {auth.failed_medium_threshold}",
+        f"- failed high threshold: {auth.failed_high_threshold}",
+        f"- invalid user threshold: {auth.invalid_user_threshold}",
+        f"- success-after-failure threshold: {auth.success_after_failure_threshold}",
+        f"- window: {auth.window_minutes} minutes", "", "Web:",
+        f"- client error threshold: {web.client_error_threshold}",
+        f"- server error threshold: {web.server_error_threshold}", "", "No analysis was performed.",
+    ))
 
 
 def _format_finding(finding: Finding) -> list[str]:
