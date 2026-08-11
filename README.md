@@ -1,169 +1,127 @@
 # LogHunter
 
-A Python command-line defensive security tool for safely parsing local authentication and web logs, correlating events, and presenting transparent rule-based findings for analyst review.
+LogHunter is a defensive Python CLI for parsing explicitly supplied local authentication and web logs, correlating normalized events, and presenting transparent heuristic findings for analyst review.
 
-## Phase 5 Status
+Version 1.0.0 is release-ready on this branch. Findings do not prove compromise, malicious intent, or successful exploitation.
 
-LogHunter 0.5.0 adds strictly validated local JSON detection configuration, configuration diagnostics, effective-configuration report metadata, and a formal Draft 2020-12 JSON Schema document.
+## Features
 
-Three versions are maintained independently:
+- Safe, read-only streaming of explicit regular local files; directories and symbolic links are rejected.
+- OpenSSH authentication and Apache/Nginx common/combined access-log parsers.
+- Time-aware AUTH-001–004 and dataset-wide WEB-001–003 rules.
+- Multi-file analysis, cross-file correlation, deduplication, and source provenance.
+- Exact severity, rule-ID, and source-IP analyst filters.
+- Deterministic text and JSON reports with ISO timestamps and report schema 1.0.
+- Immutable local JSON configuration, strict bounds, and `config-check` diagnostics.
+- Standard-library runtime with Python 3.11+ and module/console entry points.
 
-| Component | Version |
-|---|---:|
-| Application | 0.5.0 |
-| Report schema | 1.0 |
-| Configuration schema | 1.0 |
-
-Findings remain heuristic indicators and do not prove compromise, malicious intent, or successful exploitation.
-
-## Configuration Overview
-
-Without `--config`, immutable built-in defaults preserve Phase 4 behavior exactly. A custom configuration is loaded only from an explicitly supplied local JSON file:
-
-```powershell
-python -m loghunter analyze samples/auth_sample.log --type auth --config examples/loghunter-config.json
-```
-
-LogHunter never searches home directories, environment variables, registries, URLs, or cloud services for configuration. The file is opened read-only and is never executed or modified. Missing files, directories, and symbolic links are rejected.
-
-The authoritative example is [examples/loghunter-config.json](examples/loghunter-config.json):
-
-```json
-{
-  "version": "1.0",
-  "auth": {
-    "failed_medium_threshold": 4,
-    "failed_high_threshold": 9,
-    "invalid_user_threshold": 3,
-    "success_after_failure_threshold": 4,
-    "window_minutes": 10
-  },
-  "web": {
-    "client_error_threshold": 7,
-    "server_error_threshold": 4
-  }
-}
-```
-
-## Default Detection Settings
-
-| Setting | Default |
-|---|---:|
-| AUTH-001 threshold | 5 |
-| AUTH-002 threshold | 10 |
-| AUTH-003 threshold | 3 |
-| AUTH-004 prior failures | 5 |
-| Auth window | 10 minutes |
-| WEB-001 threshold | 8 |
-| WEB-003 threshold | 5 |
-
-Rules receive an immutable configuration object from the analysis layer. Rules never read files and there is no global mutable configuration.
-
-## Strict Validation
-
-Configuration validation rejects:
-
-- malformed JSON or a non-object root;
-- missing or unsupported `version` values;
-- missing or unknown top-level, `auth`, or `web` keys;
-- strings or booleans where integers are required;
-- thresholds outside 1–100,000;
-- auth windows outside 1–1,440 minutes;
-- a high failure threshold lower than the medium threshold.
-
-Values are never silently clamped. Expected errors produce a concise message, nonzero exit status, and no traceback.
-
-## Configuration Diagnostics
-
-Validate a configuration without analyzing logs:
-
-```powershell
-python -m loghunter config-check examples/loghunter-config.json
-```
-
-The command reports the file, schema version, validation status, and effective settings, followed by `No analysis was performed.` Invalid files exit nonzero.
-
-## Multi-File and Filter Compatibility
-
-Custom configuration works with safe cross-file correlation:
-
-```powershell
-python -m loghunter analyze samples/auth_sample.log samples/auth_extra.log --type auth --config examples/loghunter-config.json
-```
-
-Analyst filters still run after detection:
-
-```powershell
-python -m loghunter analyze samples/auth_sample.log --type auth --config examples/loghunter-config.json --severity HIGH
-python -m loghunter analyze samples/auth_sample.log --type auth --config examples/loghunter-config.json --rule AUTH-004
-python -m loghunter analyze samples/auth_sample.log --type auth --config examples/loghunter-config.json --source-ip 203.0.113.50
-```
-
-`--severity` is an exact case-insensitive match, `--rule` validates known IDs, and `--source-ip` validates exact IPv4/IPv6 syntax. Filtering narrows the view; it does not change detection logic or confidence.
-
-## Configuration with `--no-detect`
-
-`--config` is allowed with `--no-detect`. LogHunter validates and records the configuration but does not run rules:
-
-```powershell
-python -m loghunter analyze samples/auth_sample.log --type auth --config examples/loghunter-config.json --no-detect
-```
-
-Finding-specific filters remain incompatible with `--no-detect`.
-
-## Reporting Metadata
-
-Text reports identify the application and configuration source:
+## Architecture
 
 ```text
-LOGHUNTER 0.5.0
-Configuration: examples/loghunter-config.json (schema 1.0)
+CLI -> validation -> read-only loading -> parsing -> normalization
+    -> deduplication/correlation -> detection -> filtering -> reporting
 ```
 
-JSON reports contain distinct metadata:
+Configuration is loaded once, validated into immutable dataclasses, and passed to rule instances. Detection completes before analyst filters are applied. See [Architecture](docs/ARCHITECTURE.md).
 
-```json
-{
-  "schema": {"name": "loghunter-report", "version": "1.0"},
-  "tool": {"name": "LogHunter", "version": "0.5.0"},
-  "configuration": {
-    "source": "examples/loghunter-config.json",
-    "schema_version": "1.0",
-    "effective": {
-      "auth": {},
-      "web": {}
-    }
-  }
-}
-```
+## Detection Rules
 
-The effective section contains only validated detection settings. No arbitrary configuration content is copied into reports.
+| Rule | Description | Severity | Default |
+|---|---|---:|---:|
+| AUTH-001 | Repeated failed authentication | MEDIUM | 5 / 10 min |
+| AUTH-002 | Potential brute-force pattern | HIGH | 10 / 10 min |
+| AUTH-003 | Repeated invalid-user attempts | MEDIUM | 3 / 10 min |
+| AUTH-004 | Success after repeated failures | HIGH | 5 + success / 10 min |
+| WEB-001 | Repeated HTTP client errors | LOW | 8 / dataset |
+| WEB-002 | Sensitive-path probing | MEDIUM | 1 match / dataset |
+| WEB-003 | Repeated HTTP server errors | MEDIUM | 5 / dataset |
 
-## Formal Report Schema
-
-The formal report schema is [schemas/loghunter-report.schema.json](schemas/loghunter-report.schema.json). It uses [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12/schema) and defines metadata, configuration, filters, aggregate/per-file summaries, findings, severity enums, nullable fields, timestamps, counters, provenance, and disclaimer.
-
-Report schema version remains 1.0. The Phase 5 `configuration` property is optional in the schema, preserving structural compatibility with Phase 4 version 1.0 reports. Tests validate the schema contract without adding a runtime JSON Schema dependency.
-
-## Multi-File Safety and Provenance
-
-Every supplied path is validated before parsing. LogHunter rejects directories, symbolic links, missing paths, and duplicate file arguments. Files are parsed independently, records are deduplicated for detection, provenance is merged, and events are sorted chronologically. All files in one invocation must share an explicit log type.
-
-## Security and Analyst Guidance
-
-LogHunter analyzes only explicitly supplied local files and reads configuration only from explicitly supplied local paths. It makes no network calls, scans, authentication attempts, reputation queries, or active-response changes. It executes no log or configuration content, modifies no inputs, blocks nothing, and changes no firewall or account settings.
-
-Configuration changes sensitivity, not certainty. Lower thresholds or wider windows can increase findings and false positives. Cross-file correlation assumes compatible timestamps and inferred auth years. Findings always require contextual analyst review.
+Every finding includes a description, concise evidence, recommendation, severity, count, timestamps where available, and contributing files. Rules document plausible benign explanations.
 
 ## Installation
-
-Python 3.11 or newer is required. Runtime dependencies are standard-library only.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e .
 ```
+
+Both entry points remain supported:
+
+```powershell
+python -m loghunter --version
+loghunter --version
+```
+
+## Quick Start
+
+```powershell
+python -m loghunter --help
+python -m loghunter analyze samples/auth_sample.log --type auth
+python -m loghunter analyze samples/access_sample.log --type web
+python -m loghunter analyze samples/auth_sample.log --type auth --format json
+```
+
+Security findings do not change the successful exit code. Expected input/configuration errors use nonzero exits, stderr, and no traceback.
+
+## Multi-File Analysis
+
+```powershell
+python -m loghunter analyze samples/auth_sample.log samples/auth_extra.log --type auth
+```
+
+Files are validated and parsed independently, then compatible normalized events are deduplicated and correlated chronologically. Per-file counts and merged provenance remain visible. All files in one invocation must share an explicit log type.
+
+## Analyst Filters
+
+Filters narrow the completed finding set; they do not change detection or confidence.
+
+```powershell
+python -m loghunter analyze samples/auth_sample.log --type auth --severity HIGH
+python -m loghunter analyze samples/auth_sample.log --type auth --rule AUTH-004
+python -m loghunter analyze samples/auth_sample.log --type auth --source-ip 203.0.113.50
+```
+
+## Configuration
+
+Built-in defaults are immutable. Custom configuration is loaded only from an explicit local JSON file:
+
+```powershell
+python -m loghunter config-check examples/loghunter-config.json
+python -m loghunter analyze samples/auth_sample.log --type auth --config examples/loghunter-config.json
+```
+
+Configuration schema version is 1.0. Unknown/missing keys, wrong types, unsupported versions, thresholds outside 1–100,000, and windows outside 1–1,440 minutes are rejected. No remote loading, discovery, inheritance, or input mutation occurs.
+
+## JSON Reporting
+
+JSON output contains separate metadata for:
+
+- application version `1.0.0`;
+- report schema version `1.0`;
+- configuration schema version `1.0` and effective settings.
+
+It also contains active filters, aggregate/per-file summaries, deterministic findings, provenance, and the disclaimer—never raw log lines. The formal Draft 2020-12 contract is [loghunter-report.schema.json](schemas/loghunter-report.schema.json). It supports contract testing/documentation and is not required at runtime.
+
+## Example Output
+
+```text
+[HIGH] AUTH-004
+Successful Authentication After Repeated Failures
+Source IP: 203.0.113.50
+Username: demo-user
+Events: 6
+
+A successful authentication was observed after repeated failures...
+```
+
+## Security Boundaries
+
+LogHunter performs offline defensive analysis only. It makes no network calls, scans, authentication attempts, exploitation attempts, reputation queries, blocking changes, firewall changes, account actions, or active response. It executes no input content and modifies no logs or configuration. Use it only with data you are authorized to access. See [Security Policy](SECURITY.md).
+
+## Limitations
+
+Parser coverage is narrow; auth years/timezones require explicit assumptions; findings can be false positives; web error rules remain dataset-wide; and there is no persistent state, streaming ingestion, external enrichment, automatic rotation discovery, or active response. See [Known Limitations](docs/LIMITATIONS.md).
 
 ## Testing
 
@@ -172,14 +130,31 @@ python -m unittest discover -s tests -p "test_*.py"
 python -m compileall loghunter
 ```
 
-Tests are deterministic, local, synthetic, and make no network calls.
+Tests use synthetic fixtures and documentation-safe IP ranges only. A Windows symlink-policy test may skip when the environment lacks permission to create symlinks; rejection behavior remains enforced.
 
-## Limitations
+## Project Structure
 
-Only configuration schema 1.0 is supported. Configuration cannot disable individual rules or change sensitive-path patterns. Report contract validation is performed in tests rather than at runtime. Auth year and UTC timezone remain contextual assumptions. No configuration inheritance, remote loading, automatic discovery, persisted analysis state, or active response exists.
+```text
+loghunter/   application, configuration, parsers, detection, reporting
+samples/     synthetic auth and web fixtures
+examples/    safe example configuration
+schemas/     formal report JSON Schema
+tests/       deterministic regression and contract tests
+docs/        architecture, demo, limitations, release notes/checklist
+```
 
-## Roadmap
+## Demo and Release Documentation
 
-1. Phases 1–4: safe parsing, transparent rules, time correlation, JSON, multi-file analysis, and filters.
-2. Phase 5: immutable external configuration, diagnostics, and formal report schema.
-3. Phase 6: rule enable/disable controls, configuration migration guidance, and packaged schema distribution—without active response.
+- [3–5 minute demo](docs/DEMO.md)
+- [Release notes](docs/RELEASE_NOTES_1.0.0.md)
+- [Release checklist](docs/RELEASE_CHECKLIST.md)
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+
+## Future Work
+
+Potential later work includes rule enable/disable configuration and configuration migration diagnostics. These are intentionally outside 1.0.0 stabilization. Active response and unsupported claims of compromise remain out of scope.
+
+## Versioning and License
+
+Application, report schema, and configuration schema versions evolve independently. This repository currently has no `LICENSE` file; no legal license is implied by this README.

@@ -1,0 +1,21 @@
+# LogHunter 1.0.0 Release Checklist
+
+- [x] Application version set to 1.0.0
+- [x] Report schema remains 1.0
+- [x] Configuration schema remains 1.0
+- [x] README updated for the final portfolio release
+- [x] CHANGELOG updated
+- [x] SECURITY.md reviewed
+- [x] Architecture documentation reviewed
+- [x] Limitations documented
+- [x] Demo commands documented and verified
+- [x] Example configuration validated
+- [x] Report schema contract verified
+- [x] Full automated test suite passes
+- [x] Editable installation and CLI smoke tests completed
+- [x] Secret and generated-artifact checks completed
+- [ ] Review final clean Git status after committing release changes
+- [ ] Confirm `main` is synchronized before tagging
+- [ ] Create annotated `v1.0.0` tag
+- [ ] Push the tag
+- [ ] Create the GitHub release from `docs/RELEASE_NOTES_1.0.0.md`

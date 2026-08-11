@@ -17,7 +17,7 @@ class Phase4ReportingTests(unittest.TestCase):
     def test_schema_and_tool_versions_are_separate(self):
         _, report = run_json("samples/auth_sample.log", "--type", "auth")
         self.assertEqual(report["schema"], {"name": "loghunter-report", "version": "1.0"})
-        self.assertEqual(report["tool"], {"name": "LogHunter", "version": "0.5.0"})
+        self.assertEqual(report["tool"], {"name": "LogHunter", "version": "1.0.0"})
 
     def test_json_multifile_files_and_aggregate_summary(self):
         _, report = run_json("samples/auth_sample.log", "samples/auth_extra.log", "--type", "auth")

@@ -3,9 +3,11 @@
 import argparse
 import json
 import sys
+from textwrap import dedent
 from collections.abc import Sequence
 from pathlib import Path
 
+from . import __version__
 from .analysis import Investigation, analyze_files, infer_log_type, parse_file
 from .config import ConfigError, load_config
 from .detection import Finding
@@ -40,7 +42,21 @@ def _source_ip(value: str) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="loghunter", description="Analyze one or more explicit local logs with transparent security rules.")
+    parser = argparse.ArgumentParser(
+        prog="loghunter",
+        description="Defensive, offline analysis of explicitly supplied local authentication and web logs.",
+        epilog=dedent("""\
+            examples:
+              loghunter analyze samples/auth_sample.log --type auth
+              loghunter analyze samples/auth_sample.log --type auth --severity HIGH
+              loghunter analyze samples/auth_sample.log --type auth --format json
+              loghunter config-check examples/loghunter-config.json
+
+            Findings are heuristic indicators and require analyst review.
+        """),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--version", action="version", version=f"LogHunter {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
     analyze = commands.add_parser("analyze", help="parse local logs and report investigation findings")
     analyze.add_argument("files", nargs="+", help="one or more local log files")

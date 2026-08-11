@@ -85,5 +85,5 @@ class ConfiguredDetectionTests(unittest.TestCase):
         output = StringIO()
         with redirect_stdout(output):
             main(["analyze", "samples/auth_sample.log", "--type", "auth", "--config", "examples/loghunter-config.json", "--severity", "HIGH"])
-        self.assertIn("LOGHUNTER 0.5.0", output.getvalue())
+        self.assertIn("LOGHUNTER 1.0.0", output.getvalue())
         self.assertIn("Configuration: examples/loghunter-config.json (schema 1.0)", output.getvalue())
